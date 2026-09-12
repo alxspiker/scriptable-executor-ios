@@ -16,16 +16,20 @@ The user remains in control because every execution starts with an explicit tap.
 
 Within Scriptable's APIs and normal iOS permissions, an AI can prepare actions such as:
 
-- read basic device information
+- read live device information like battery, charging state, OS version, screen size, and appearance mode
 - work with files in Scriptable's local or iCloud containers
-- make HTTP requests
-- schedule notifications
+- make HTTP requests and process JSON/text responses
+- schedule local notifications and timer-like future notifications
 - manipulate clipboard text
 - open webpages or apps through supported URL schemes
+- prefill supported compose flows, such as an X post
+- present custom full-screen HTML/CSS/JS interfaces with Scriptable `WebView`
+- build mini control-panel style interfaces inside Scriptable
+- help create or update Scriptable Home Screen / Lock Screen widget scripts
 - return structured JSON results to the conversation
-- build more advanced Scriptable automations
+- combine these primitives into larger user-triggered workflows
 
-It is **not** arbitrary remote control, background control, or unrestricted screen tapping.
+It is **not** arbitrary remote control, background control, unrestricted screen tapping, or automatic access to unrelated apps' private data.
 
 ## Requirements
 
@@ -83,9 +87,9 @@ A return URL is optional and app-specific. `chatgpt://` has been tested with the
 
 If a chat client blocks tappable custom-scheme links, the AI can provide the complete URL as plain text for manual use.
 
-## Example
+## Examples
 
-An AI could generate JavaScript like:
+### Read device state
 
 ```javascript
 const size = Device.screenSize();
@@ -94,6 +98,8 @@ return {
   device: Device.name(),
   os: `${Device.systemName()} ${Device.systemVersion()}`,
   batteryPercent: Math.round(Device.batteryLevel() * 100),
+  charging: Device.isCharging(),
+  darkMode: Device.isUsingDarkAppearance(),
   screen: {
     width: size.width,
     height: size.height
@@ -101,7 +107,70 @@ return {
 };
 ```
 
-After the user taps the generated Shortcut link, Scriptable executes that code on the device and copies the result to the clipboard.
+### Write to Scriptable iCloud
+
+```javascript
+const fm = FileManager.iCloud();
+const path = fm.joinPath(fm.documentsDirectory(), "executor-test.txt");
+fm.writeString(path, "Created by Scriptable Executor.");
+
+return {
+  path,
+  exists: fm.fileExists(path),
+  contents: fm.readString(path)
+};
+```
+
+### Show a custom UI
+
+```javascript
+const web = new WebView();
+await web.loadHTML(`
+<!doctype html>
+<html>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <body style="font-family:-apple-system;padding:32px">
+    <h1>AI iPhone Control Panel</h1>
+    <p>Battery: ${Math.round(Device.batteryLevel() * 100)}%</p>
+  </body>
+</html>`);
+await web.present(true);
+return { ok: true, ui: "presented" };
+```
+
+### Schedule a 60-second notification timer
+
+```javascript
+const notification = new Notification();
+notification.title = "Timer";
+notification.body = "Time's up!";
+notification.setTriggerDate(new Date(Date.now() + 60000));
+await notification.schedule();
+return { ok: true, timerSeconds: 60 };
+```
+
+This is a scheduled local notification, not the native Clock app timer.
+
+### Generate a Scriptable widget
+
+```javascript
+const widget = new ListWidget();
+widget.addText("AI Widget");
+widget.addText(`Battery ${Math.round(Device.batteryLevel() * 100)}%`);
+Script.setWidget(widget);
+return "widget generated";
+```
+
+A Scriptable widget script still has to be associated with a Scriptable widget on the Home Screen or Lock Screen. The bridge can help create/update the code, but iOS widget placement remains a user action.
+
+## Important boundaries
+
+- Scriptable does not provide arbitrary remote screen control or unrestricted tapping inside other apps.
+- Do not assume it can read another app's private data merely because that app is installed.
+- Native iOS permissions still apply to personal data sources such as notifications, calendars, reminders, contacts, photos, and location.
+- App URL schemes and some Settings URLs may be undocumented or device-dependent.
+- Widget refresh timing is partly controlled by iOS.
+- A `WebView` can host rich HTML/CSS/JS, but browser JavaScript does not automatically gain unrestricted Scriptable API access.
 
 ## Safety model
 
@@ -127,14 +196,19 @@ It includes:
 - payload format
 - link construction rules
 - setup instructions
+- capability map
 - round-trip tests
-- examples
+- device-state examples
+- iCloud file examples
+- notification/timer examples
+- custom `WebView` UI examples
+- Scriptable widget guidance
 - troubleshooting
 - execution boundaries
 
-## Status
+## Tested on-device
 
-The core bridge has been tested on-device with:
+The core bridge has now been tested on-device with:
 
 - JavaScript execution through Scriptable
 - structured result return
@@ -142,8 +216,15 @@ The core bridge has been tested on-device with:
 - reopening ChatGPT with a tested URL scheme
 - reading iPhone device state
 - writing and reading a file in Scriptable's iCloud container
+- opening a prefilled X compose flow
+- scheduling a 60-second local notification timer
+- presenting a full-screen custom `WebView` control panel
 
-Behavior can still vary by iOS version, Scriptable version, app permissions, and the URL scheme supported by a particular AI client.
+The following is documented as a supported Scriptable pattern but was not yet verified in this repo's live test session at the time of writing:
+
+- adding/configuring a Scriptable Home Screen or Lock Screen widget end-to-end
+
+Behavior can vary by iOS version, Scriptable version, app permissions, and the URL scheme supported by a particular AI client.
 
 ## License
 
