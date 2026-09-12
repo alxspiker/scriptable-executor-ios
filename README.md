@@ -16,6 +16,12 @@ AI clients that do not open those links directly can use the same generated link
 
 Some clients may wrap the custom Shortcut link inside an ordinary web URL before it reaches the Share Sheet. The executor unwraps encoded query-parameter values until it finds the embedded `shortcuts://run-shortcut?...` action, so the AI does not need to generate a second payload format.
 
+## Return behavior
+
+- **ChatGPT:** use `returnUrl: "chatgpt://"` for round trips.
+- **Gemini:** omit `returnUrl` by default. The result is copied to the clipboard and the user returns to the same Gemini conversation manually; reopening Gemini by URL may open a new chat.
+- **Other AI apps:** use a return URL only when it preserves the intended conversation or app context.
+
 ## What it can do
 
 Within Scriptable's APIs and normal device permissions, an AI can generate actions that:
@@ -52,7 +58,7 @@ The skill contains the complete instructions for:
 - direct-link execution
 - Share Sheet execution
 - wrapped-link unwrapping
-- `returnUrl` behavior
+- client-specific `returnUrl` behavior
 - action generation
 - capabilities and examples
 - troubleshooting
