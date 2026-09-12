@@ -25,7 +25,7 @@ Within Scriptable's APIs and normal iOS permissions, an AI can prepare actions s
 - prefill supported compose flows, such as an X post
 - present custom full-screen HTML/CSS/JS interfaces with Scriptable `WebView`
 - build mini control-panel style interfaces inside Scriptable
-- help create or update Scriptable Home Screen / Lock Screen widget scripts
+- create or update Scriptable Home Screen / Lock Screen widget scripts
 - return structured JSON results to the conversation
 - combine these primitives into larger user-triggered workflows
 
@@ -53,16 +53,18 @@ The Scriptable script handles returned output, clipboard copying, and optional r
 
 ## How an AI uses it
 
-The AI creates a payload like:
+For a ChatGPT round trip, the AI can create a payload like:
 
 ```json
 {
   "code": "return { message: 'hello from iOS', answer: 42 };",
-  "returnUrl": "<OPTIONAL_TESTED_AI_APP_URL_SCHEME>"
+  "returnUrl": "chatgpt://"
 }
 ```
 
-It serializes and URL-encodes that payload into:
+For another AI app, replace `chatgpt://` with that app's supported URL scheme. If the action should leave another app or webpage open, omit `returnUrl`.
+
+The payload is serialized and URL-encoded into:
 
 ```text
 shortcuts://run-shortcut?name=Scriptable%20Executor&input=text&text=<URL_ENCODED_JSON_PAYLOAD>
@@ -83,7 +85,7 @@ Any AI can use it if the AI can:
 3. serialize and URL-encode the payload, and
 4. present the resulting Shortcut URL to the user.
 
-A return URL is optional and app-specific. `chatgpt://` has been tested with the native ChatGPT app, but other clients may require a different scheme or no return URL at all.
+Returning to the AI app is controlled by the optional `returnUrl`. ChatGPT uses `chatgpt://`; other AI apps can use their own supported URL schemes.
 
 If a chat client blocks tappable custom-scheme links, the AI can provide the complete URL as plain text for manual use.
 
@@ -149,8 +151,6 @@ await notification.schedule();
 return { ok: true, timerSeconds: 60 };
 ```
 
-This is a scheduled local notification, not the native Clock app timer.
-
 ### Generate a Scriptable widget
 
 ```javascript
@@ -161,7 +161,7 @@ Script.setWidget(widget);
 return "widget generated";
 ```
 
-A Scriptable widget script still has to be associated with a Scriptable widget on the Home Screen or Lock Screen. The bridge can help create/update the code, but iOS widget placement remains a user action.
+A Scriptable widget script still has to be associated with a Scriptable widget on the Home Screen or Lock Screen. The bridge can create or update the code, while widget placement remains a user action.
 
 ## Important boundaries
 
@@ -194,10 +194,11 @@ It includes:
 
 - the complete executor script
 - payload format
+- return-to-app behavior
 - link construction rules
 - setup instructions
 - capability map
-- round-trip tests
+- round-trip examples
 - device-state examples
 - iCloud file examples
 - notification/timer examples
@@ -205,26 +206,6 @@ It includes:
 - Scriptable widget guidance
 - troubleshooting
 - execution boundaries
-
-## Tested on-device
-
-The core bridge has now been tested on-device with:
-
-- JavaScript execution through Scriptable
-- structured result return
-- clipboard round trip
-- reopening ChatGPT with a tested URL scheme
-- reading iPhone device state
-- writing and reading a file in Scriptable's iCloud container
-- opening a prefilled X compose flow
-- scheduling a 60-second local notification timer
-- presenting a full-screen custom `WebView` control panel
-
-The following is documented as a supported Scriptable pattern but was not yet verified in this repo's live test session at the time of writing:
-
-- adding/configuring a Scriptable Home Screen or Lock Screen widget end-to-end
-
-Behavior can vary by iOS version, Scriptable version, app permissions, and the URL scheme supported by a particular AI client.
 
 ## License
 
