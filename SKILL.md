@@ -1,6 +1,6 @@
 ---
 name: scriptable-executor-ios
-description: Use when an AI assistant needs to create user-triggered iPhone or iPad actions through Apple Shortcuts and Scriptable, including on-device JavaScript, clipboard round trips, app launching, HTTP requests, files, notifications, setup, or troubleshooting.
+description: Use when an AI assistant needs to create user-triggered iPhone or iPad actions through Apple Shortcuts and Scriptable, including on-device JavaScript, clipboard round trips, custom UI, widgets, app launching, HTTP requests, files, notifications, device state, setup, or troubleshooting.
 ---
 
 # Scriptable Executor iOS Bridge
@@ -38,6 +38,34 @@ This skill is intentionally vendor-neutral. It describes a protocol, not a depen
 - Returning to the AI app is optional. Use a URL scheme only after it has been tested on that app.
 - If an AI client does not make custom-scheme links tappable, provide the complete URL as text for the user to open manually.
 - If an AI environment supports reusable skills, install this file as `SKILL.md`. Otherwise, use it as reference instructions.
+
+## Capability map
+
+Think in Scriptable primitives. The bridge can combine these into larger workflows when the user's request requires it.
+
+Verified on the supplied iPhone setup:
+
+- Execute task-specific JavaScript on-device through Scriptable.
+- Return strings or JSON-serializable results to Shortcuts and the clipboard.
+- Read basic device state such as battery level, charging status, iOS version, screen size, and appearance mode.
+- Read and write files in Scriptable's local or iCloud containers.
+- Make HTTP requests and process returned JSON or text.
+- Schedule local notifications, including timer-like notifications for a future trigger date.
+- Open webpages and supported app/deep-link URLs.
+- Prefill supported web/app compose flows, such as an X post intent URL.
+- Present full-screen custom HTML/CSS/JavaScript interfaces with `WebView`.
+- Build interactive mini-app style control panels inside Scriptable.
+- Create Scriptable widgets for the iOS Home Screen or Lock Screen where supported by Scriptable/iOS.
+
+Possible Scriptable capabilities may extend beyond this list. Use the actual Scriptable APIs available on the user's installed version; do not claim an API exists without checking when uncertain.
+
+### Important boundaries
+
+- Scriptable does not provide arbitrary remote screen control or unrestricted tapping inside other apps.
+- Do not assume Scriptable can read data from an unrelated app merely because that app exists on the phone.
+- Native iOS permissions still apply to notifications, calendars, reminders, location, contacts, photos, and similar personal data.
+- Some app URL schemes and Settings URLs are undocumented or device-dependent. Treat them as optional capabilities, not guaranteed behavior.
+- Home Screen widget refresh timing is partly controlled by iOS and is not equivalent to a continuously running app.
 
 ## Device setup
 
@@ -165,7 +193,7 @@ Create a link from this payload, substituting a return URL only if the user's AI
 
 Expected sequence: tap the link, run the shortcut, execute in Scriptable, copy the timestamped text, optionally reopen the chosen AI app, and manually paste the result.
 
-The supplied file records this successful device result:
+The supplied setup records this successful device result:
 
 ```text
 EXECUTOR_OK_2026-09-12T19:49:41.072Z
@@ -181,12 +209,27 @@ Treat that as a user-reported test of the supplied setup, not verification on ev
 return { message: "Raw JavaScript works", answer: 42 };
 ```
 
-### Open a webpage
+### Read device state
 
-Omit `returnUrl` to leave the destination open.
+```javascript
+const size = Device.screenSize();
+
+return {
+  os: `${Device.systemName()} ${Device.systemVersion()}`,
+  batteryPercent: Math.round(Device.batteryLevel() * 100),
+  charging: Device.isCharging(),
+  darkMode: Device.isUsingDarkAppearance(),
+  screen: { width: size.width, height: size.height }
+};
+```
+
+### Open a webpage or supported deep link
+
+Omit `returnUrl` when the destination should stay open.
 
 ```javascript
 Safari.open("https://example.com");
+return null;
 ```
 
 ### Copy text
@@ -216,18 +259,83 @@ await notification.schedule();
 return "notification scheduled";
 ```
 
-### Write a file in Scriptable's local documents
+### Schedule a timer-like notification
+
+This is a scheduled notification, not the native Clock app timer.
 
 ```javascript
-const fm = FileManager.local();
-const path = fm.joinPath(fm.documentsDirectory(), "executor-test.txt");
-fm.writeString(path, "Created by Scriptable Executor.");
-return path;
+const seconds = 60;
+const notification = new Notification();
+notification.title = "Timer";
+notification.body = "Time's up!";
+notification.setTriggerDate(new Date(Date.now() + seconds * 1000));
+await notification.schedule();
+return { ok: true, timerSeconds: seconds };
 ```
 
-The path is on the device; it is not an attachment accessible to the AI.
+### Write and read an iCloud file
 
-The supplied setup also reports opening Settings with `Safari.open("App-Prefs:")`. Treat this scheme as device-dependent; do not promise access to specific Settings panes or the ability to change settings.
+```javascript
+const fm = FileManager.iCloud();
+const path = fm.joinPath(fm.documentsDirectory(), "executor-test.txt");
+fm.writeString(path, "Created by Scriptable Executor.");
+
+return {
+  path,
+  exists: fm.fileExists(path),
+  contents: fm.readString(path)
+};
+```
+
+The returned path is a device/iCloud-container path; it is not automatically an attachment accessible to the AI.
+
+### Present a custom full-screen UI
+
+Use `WebView` for custom HTML/CSS/JavaScript interfaces.
+
+```javascript
+const web = new WebView();
+await web.loadHTML(`
+<!doctype html>
+<html>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <body style="font-family:-apple-system;padding:32px">
+    <h1>AI iPhone Control Panel</h1>
+    <p>Battery: ${Math.round(Device.batteryLevel() * 100)}%</p>
+    <button onclick="document.body.dataset.clicked='yes'">Demo button</button>
+  </body>
+</html>`);
+await web.present(true);
+return { ok: true, ui: "presented" };
+```
+
+For more advanced interfaces, combine `WebView` with Scriptable code around the presentation lifecycle. Do not imply that DOM JavaScript automatically has unrestricted access to Scriptable APIs; bridge behavior must be implemented deliberately.
+
+### Create a Scriptable widget
+
+Widgets are persistent Scriptable scripts/configurations, not merely a temporary executor result. Use `ListWidget` when generating widget code or when the task explicitly involves installing/updating a Scriptable widget.
+
+```javascript
+const widget = new ListWidget();
+widget.addText("AI Widget");
+widget.addText(`Battery ${Math.round(Device.batteryLevel() * 100)}%`);
+Script.setWidget(widget);
+return "widget generated";
+```
+
+A Home Screen widget still needs to be associated with a Scriptable script/widget configuration in iOS. The executor can help create or update the script, but do not pretend a widget has been added to the Home Screen until the user actually adds/configures it.
+
+## Composition patterns
+
+Prefer combining primitives only when it helps the user's actual task. Examples:
+
+- Fetch API data → render a custom `WebView` dashboard.
+- Fetch API data → write JSON to iCloud → return the path/result.
+- Read device state → present a control panel → open a deep link based on the user's selection.
+- Generate text → prefill another app's supported compose URL → leave that app open.
+- Build or update a Scriptable widget script from live data.
+
+Avoid speculative complexity. One clear execution path is better than multiple fallback implementations.
 
 ## Troubleshooting
 
@@ -237,6 +345,8 @@ The supplied setup also reports opening Settings with `Safari.open("App-Prefs:")
 - If computation works but app launching or UI does not, check **Run in App** before changing the code.
 - If no fresh result appears, check for an explicit return value and inspect Scriptable for input-validation errors.
 - If the AI app does not reopen, distinguish an execution error from an untested return scheme. The executor only attempts the return after successful execution and output handling.
+- If `WebView` works but a button does not perform a native Scriptable action, inspect the boundary between DOM JavaScript and Scriptable JavaScript rather than assuming they share one runtime.
+- If a widget does not refresh when expected, remember that iOS controls widget refresh scheduling.
 - Use one small diagnostic per link. Inspect the actual result before adding another step.
 
 ## Execution boundaries
