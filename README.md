@@ -8,13 +8,13 @@ The project is intentionally simple and self-contained: the complete setup, exec
 
 ## Why this is useful
 
-AI clients that can open `shortcuts://` links can launch generated actions directly.
+AI clients that open `shortcuts://` links can launch generated actions directly.
 
 AI clients that do not open those links directly can use the same generated link through the iOS Share Sheet:
 
 **press and hold the link → Share → Scriptable Executor**
 
-That makes the bridge usable from ChatGPT, Gemini, and other AI clients without requiring a different payload format.
+Some clients may wrap the custom Shortcut link inside an ordinary web URL before it reaches the Share Sheet. The executor unwraps encoded query-parameter values until it finds the embedded `shortcuts://run-shortcut?...` action, so the AI does not need to generate a second payload format.
 
 ## What it can do
 
@@ -47,11 +47,11 @@ The skill contains the complete instructions for:
 - creating the **Scriptable Executor** script
 - creating the **Scriptable Executor** Shortcut
 - enabling **Text and URLs** in the Share Sheet
-- converting incoming **Shortcut Input to plain text** before Scriptable
-- wiring that text result into Scriptable
+- converting **Shortcut Input** to plain text before Scriptable runs
 - the full executor JavaScript
 - direct-link execution
-- Gemini/Share Sheet execution
+- Share Sheet execution
+- wrapped-link unwrapping
 - `returnUrl` behavior
 - action generation
 - capabilities and examples
@@ -59,7 +59,7 @@ The skill contains the complete instructions for:
 
 No separate JavaScript file is required.
 
-## Required Shortcut flow
+## Shortcut flow
 
 ```text
 Receive Text and URLs from Share Sheet
@@ -69,17 +69,13 @@ Get Text from Shortcut Input
 Run Scriptable Executor with Text
 ```
 
-The text-conversion step is important. Apps such as Gemini may share a link as an iOS URL content item. Passing that raw item directly into Scriptable can fail before the executor runs. Converting it to text gives Scriptable the actual `shortcuts://` URL string to parse.
-
-Direct launches continue to work with the same flow because direct payload input is already text.
-
 ## Action link format
 
 ```text
 shortcuts://run-shortcut?name=Scriptable%20Executor&input=text&text=<URL_ENCODED_JSON_PAYLOAD>
 ```
 
-The same link can be tapped directly or shared into **Scriptable Executor**.
+The same action can be tapped directly or shared into **Scriptable Executor**.
 
 ## Repository skill
 
