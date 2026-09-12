@@ -28,11 +28,13 @@ shortcuts://run-shortcut?name=Scriptable%20Executor&input=text&text=<URL_ENCODED
 
 Do not create a separate Gemini payload. Direct launch and Share Sheet execution use the same generated URL.
 
-## Return to the AI app
+## Return behavior by AI client
 
-Use `returnUrl` when the workflow should reopen the AI app after Scriptable finishes.
+Use `returnUrl` only when returning through that app's URL scheme preserves the intended conversation or app context.
 
-For ChatGPT:
+### ChatGPT
+
+For ChatGPT round trips, include:
 
 ```json
 {
@@ -41,9 +43,29 @@ For ChatGPT:
 }
 ```
 
-For another AI app, use that app's supported URL scheme when available. Omit `returnUrl` when the action intentionally opens a destination that should remain visible, such as a compose screen or webpage.
+The executor copies the result to the clipboard and then reopens ChatGPT.
 
-The executor copies non-null results to the clipboard before opening `returnUrl`.
+### Gemini
+
+For Gemini, **omit `returnUrl` by default**.
+
+Gemini's app URL scheme can reopen the Gemini app in a new chat rather than restoring the conversation that launched the action. Keep the result on the clipboard and tell the user to return to Gemini manually and paste it into the same conversation.
+
+Example Gemini payload:
+
+```json
+{
+  "code": "return 6 * 7;"
+}
+```
+
+Do not add `googlegemini://` merely to reopen the app unless the user specifically wants that behavior.
+
+### Other AI apps
+
+Use that app's supported return URL only when it returns to the intended context. Otherwise omit `returnUrl` and rely on clipboard output plus manual return.
+
+Also omit `returnUrl` when the action intentionally opens a destination that should remain visible, such as a compose screen, webpage, Maps destination, or another app.
 
 ## AI client behavior
 
@@ -63,13 +85,13 @@ Generate the exact same action link and tell the user:
 6. The executor extracts the payload and runs it.
 7. Returned values are copied to the clipboard.
 
-Some clients wrap a custom-scheme link inside an ordinary web URL before sharing it. For example, a shared value may look like:
+Some clients wrap a custom-scheme link inside an ordinary web URL before sharing it. For example:
 
 ```text
 https://www.google.com/search?q=shortcuts%3A%2F%2Frun-shortcut%3F...
 ```
 
-The executor below recursively inspects decoded input and query-parameter values until it finds the embedded `shortcuts://run-shortcut?...` action. The AI does not need to generate a different format for this case.
+The executor recursively inspects decoded input and query-parameter values until it finds the embedded `shortcuts://run-shortcut?...` action. The AI does not need to generate a different format.
 
 ## Capabilities
 
@@ -99,7 +121,7 @@ Use these instructions for new setups. Shortcuts labels may vary slightly betwee
 4. In Shortcuts, create a shortcut named **Scriptable Executor**.
 5. Enable the shortcut for the **Share Sheet**.
 6. Configure Share Sheet input to accept **Text** and **URLs**.
-7. Add a built-in **Get Text from Shortcut Input** action, or the equivalent action that converts the incoming Shortcut input to plain text.
+7. Add **Get Text from Shortcut Input**, or the equivalent action that converts the incoming Shortcut input to plain text.
 8. Add Scriptable's **Run Script** action and select **Scriptable Executor**.
 9. For the Scriptable action's **Shortcut Parameter**, pass the **Text result from step 7**, not the original raw Shortcut Input.
 10. Enable Scriptable to run in the foreground / **Run in App**.
@@ -116,7 +138,7 @@ Run Scriptable Executor with Text
 
 The text-conversion step prevents Shortcuts from trying to convert an iOS URL content object into `public.data` before Scriptable runs.
 
-The same setup also works for direct `shortcuts://` launches because direct payload input passes through the text conversion unchanged.
+The same setup works for direct `shortcuts://` launches because direct payload input passes through the text conversion unchanged.
 
 No separate clipboard or return-to-app actions are needed; the Scriptable executor handles those.
 
@@ -352,15 +374,6 @@ Rules:
 
 Always serialize first, then URL-encode the complete JSON payload as the `text` value.
 
-Example:
-
-```json
-{
-  "code": "return 'EXECUTOR_OK_' + new Date().toISOString();",
-  "returnUrl": "chatgpt://"
-}
-```
-
 Generate the complete encoded URL programmatically when tools are available. Do not hand-truncate, insert ellipses, or leave placeholders in a link given to the user.
 
 ## Action examples
@@ -449,11 +462,12 @@ return null;
 ## Troubleshooting
 
 - If Gemini/Share Sheet execution shows an error about a URL content item, file representation, or `public.data`, the Shortcut is passing the raw URL object to Scriptable. Add **Get Text from Shortcut Input** and pass that text result to Scriptable.
-- If the executor says it cannot find a Scriptable Executor action link, inspect the actual shared text. Some clients wrap the link in a web URL; the executor supports encoded query-parameter wrappers, so unexpected transformations should be captured exactly before changing the parser.
+- If the executor says it cannot find a Scriptable Executor action link, inspect the actual shared text. Some clients wrap the link in a web URL; the executor supports encoded query-parameter wrappers.
 - If direct tapping does not launch the Shortcut, use **press and hold → Share → Scriptable Executor**.
 - If Scriptable reports no input, verify the text-conversion action feeds its result into the Scriptable **Shortcut Parameter**.
 - If Share Sheet execution does not receive the link, verify the Shortcut accepts both **Text** and **URLs**.
-- If the AI app does not reopen, inspect the `returnUrl` used in the payload.
+- If ChatGPT does not reopen, inspect `returnUrl` and use `chatgpt://` for ChatGPT round trips.
+- If Gemini opens a new chat after execution, remove `returnUrl` from Gemini payloads and return manually using the clipboard result.
 - If no fresh clipboard result appears, make sure the generated JavaScript returns a non-null value.
 - If a `WebView` button needs native Scriptable behavior, explicitly bridge that behavior; DOM JavaScript and Scriptable JavaScript are separate runtimes.
 - Widget refresh timing is controlled partly by the operating system.
